@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#ffffff">
-  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png"> <!-- Optional icon for home screen -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
@@ -16,13 +16,16 @@
 </head>
 <body>
   <h1>Speech Word Monitor</h1>
+
   <button onclick="startListening()">Start Listening</button>
   <button onclick="stopListening()">Stop Listening</button>
   <br><br>
-  <label for="wpmThreshold">Set WPM Threshold: </label>
+
+  <label for="wpmThreshold">Set WPM Threshold:</label>
   <input type="number" id="wpmThreshold" value="120">
+  
   <p>Total Words: <span id="totalWords">0</span></p>
-  <p>Current WPM: <span id="currentWPM">0</span></p>
+  <p>Current Avg WPM: <span id="currentWPM">0</span></p>
   <p>Status: <span id="status">Idle</span></p>
 
   <script>
@@ -54,8 +57,9 @@
           if (event.results[i].isFinal) {
             const transcript = event.results[i][0].transcript.trim();
             const words = transcript.split(/\s+/);
-            totalWords += words.length;
-            wordBuffer.push({ time: Date.now(), count: words.length });
+            const wordCount = words.length;
+            totalWords += wordCount;
+            wordBuffer.push({ time: Date.now(), count: wordCount });
             document.getElementById("totalWords").textContent = totalWords;
           }
         }
@@ -71,9 +75,9 @@
 
       recognition.start();
 
-      // Start WPM interval check
+      // Begin checking speech rate every 5 seconds
       if (interval) clearInterval(interval);
-      interval = setInterval(calculateWPM, 5000);
+      interval = setInterval(checkSpeechRate, 5000);
     }
 
     function stopListening() {
@@ -88,20 +92,30 @@
       document.getElementById("status").textContent = "Stopped";
     }
 
-    function calculateWPM() {
+    function checkSpeechRate() {
       const now = Date.now();
-      const oneMinuteAgo = now - 60000;
+      const windowStart = now - 5000;
 
-      // Keep only the last 60 seconds of data
-      wordBuffer = wordBuffer.filter(entry => entry.time > oneMinuteAgo);
+      // Remove old entries (older than 1 min, for avg calc)
+      wordBuffer = wordBuffer.filter(entry => entry.time > now - 60000);
 
-      const recentWords = wordBuffer.reduce((sum, entry) => sum + entry.count, 0);
-      const currentWPM = Math.round(recentWords);
-      document.getElementById("currentWPM").textContent = currentWPM;
+      // Recent 5s words
+      const recent5s = wordBuffer.filter(entry => entry.time > windowStart);
+      const count5s = recent5s.reduce((sum, entry) => sum + entry.count, 0);
 
-      const threshold = parseInt(document.getElementById("wpmThreshold").value);
-      if (currentWPM > threshold) {
-        alert("WPM threshold exceeded! Current: " + currentWPM);
+      // Running WPM average
+      if (wordBuffer.length > 0) {
+        const firstTime = wordBuffer[0].time;
+        const elapsedMin = (now - firstTime) / 60000;
+        const avgWPM = Math.round(totalWords / elapsedMin);
+        document.getElementById("currentWPM").textContent = avgWPM;
+      }
+
+      const thresholdWPM = parseInt(document.getElementById("wpmThreshold").value);
+      const thresholdPer5s = thresholdWPM / 12;
+
+      if (count5s > thresholdPer5s) {
+        alert(`🚨 Speech rate exceeded!\nSpoken: ${count5s} words in 5s\nAllowed: ${thresholdPer5s.toFixed(1)} words`);
       }
     }
   </script>
