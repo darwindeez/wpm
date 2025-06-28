@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#ffffff">
-  <link rel="apple-touch-icon" href="icon.png"> <!-- Optional -->
+  <link rel="apple-touch-icon" href="icon.png">
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
@@ -17,6 +17,7 @@
 <body>
   <h1>Speech Word Monitor</h1>
   <button onclick="startListening()">Start Listening</button>
+  <button onclick="stopListening()">Stop Listening</button>
   <br><br>
   <label for="wpmThreshold">Set WPM Threshold: </label>
   <input type="number" id="wpmThreshold" value="120">
@@ -27,8 +28,7 @@
   <script>
     let recognition;
     let totalWords = 0;
-    let startTime;
-    let interval;
+    let interval = null;
     let wordBuffer = [];
 
     function startListening() {
@@ -37,21 +37,17 @@
         return;
       }
 
+      // Reset state
+      totalWords = 0;
+      wordBuffer = [];
+      document.getElementById("totalWords").textContent = totalWords;
+      document.getElementById("currentWPM").textContent = 0;
+      document.getElementById("status").textContent = "Listening...";
+
       recognition = new webkitSpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
-
-      recognition.onstart = () => {
-        document.getElementById("status").textContent = "Listening...";
-        startTime = Date.now();
-        wordBuffer = [];
-        interval = setInterval(calculateWPM, 5000);
-      };
-
-      recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
-      };
 
       recognition.onresult = (event) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -65,23 +61,42 @@
         }
       };
 
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+      };
+
       recognition.onend = () => {
         document.getElementById("status").textContent = "Stopped";
-        clearInterval(interval);
       };
 
       recognition.start();
+
+      // Start WPM interval check
+      if (interval) clearInterval(interval);
+      interval = setInterval(calculateWPM, 5000);
+    }
+
+    function stopListening() {
+      if (recognition) {
+        recognition.stop();
+        recognition = null;
+      }
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      document.getElementById("status").textContent = "Stopped";
     }
 
     function calculateWPM() {
       const now = Date.now();
       const oneMinuteAgo = now - 60000;
 
+      // Keep only the last 60 seconds of data
       wordBuffer = wordBuffer.filter(entry => entry.time > oneMinuteAgo);
 
       const recentWords = wordBuffer.reduce((sum, entry) => sum + entry.count, 0);
       const currentWPM = Math.round(recentWords);
-
       document.getElementById("currentWPM").textContent = currentWPM;
 
       const threshold = parseInt(document.getElementById("wpmThreshold").value);
