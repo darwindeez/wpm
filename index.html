@@ -3,20 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Speech Word Monitor v1.4</title>
+  <title>Speech Word Monitor v1.6</title>
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-    button {
-      margin-right: 10px;
-    }
+    body { font-family: sans-serif; padding: 20px; }
+    button { margin-right: 10px; }
+    .chunking { color: orange; font-style: italic; }
   </style>
 </head>
 <body>
   <h1>Speech Word Monitor</h1>
-  <p><strong>Version:</strong> <span id="version">v1.4</span></p>
+  <p><strong>Version:</strong> <span id="version">v1.6</span></p>
 
   <button id="startBtn">Start Listening</button>
   <button id="stopBtn" disabled>Stop Listening</button>
@@ -27,12 +23,11 @@
   
   <p>Total Words: <span id="totalWords">0</span></p>
   <p>Current Avg WPM: <span id="currentWPM">0</span></p>
-  <p>Status: <span id="status">Idle</span></p>
+  <p>Status: <span id="status">Idle</span> <span id="chunking" class="chunking"></span></p>
 
-  <!-- Sound Alert -->
+  <!-- Working Beep Sound -->
   <audio id="alertSound" preload="auto">
-    <source src="data:audio/mp3;base64,//uQxA..." type="audio/mp3" />
-    <!-- You can replace the base64 with your own sound -->
+    <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=" type="audio/wav" />
   </audio>
 
   <script>
@@ -42,75 +37,69 @@
     let startTime;
     let alertCooldown = 5000;
     let lastAlertTime = 0;
-    let restartInterval;
     let isListening = false;
+    let chunkTimer;
 
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const statusEl = document.getElementById("status");
+    const chunkingEl = document.getElementById("chunking");
+    const alertSound = document.getElementById("alertSound");
 
     function startRecognition() {
       recognition = new webkitSpeechRecognition();
       recognition.lang = "en-US";
-      recognition.continuous = false; // run short segments
-      recognition.interimResults = false; // only final results
+      recognition.continuous = false;
+      recognition.interimResults = false;
 
       recognition.onresult = (event) => {
         const now = Date.now();
         for (let i = event.resultIndex; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
             const transcript = event.results[i][0].transcript.trim();
-            const words = transcript.split(/\s+/);
+            const words = transcript.split(/\s+/).filter(Boolean);
             const count = words.length;
             totalWords += count;
             wordBuffer.push({ time: now, count });
+
             document.getElementById("totalWords").textContent = totalWords;
 
             // Clean buffer older than 60 seconds
             wordBuffer = wordBuffer.filter((entry) => now - entry.time <= 60000);
 
-            // Calculate average WPM since start
+            // Calculate average WPM
             const elapsedMin = (now - startTime) / 60000;
             const avgWPM = Math.round(totalWords / elapsedMin);
             document.getElementById("currentWPM").textContent = avgWPM;
 
-            // Check recent 5-second burst
+            // Check for WPM burst
             const recent5s = wordBuffer.filter((e) => now - e.time <= 5000);
             const recentCount = recent5s.reduce((sum, e) => sum + e.count, 0);
-
             const threshold = parseInt(document.getElementById("wpmThreshold").value);
             const maxWordsPer5s = threshold / 12;
 
-            if (
-              recentCount > maxWordsPer5s &&
-              now - lastAlertTime > alertCooldown
-            ) {
+            if (recentCount > maxWordsPer5s && now - lastAlertTime > alertCooldown) {
               lastAlertTime = now;
-              document.getElementById("alertSound").play();
-              alert(
-                `🚨 Speech rate exceeded!\nYou spoke ${recentCount} words in 5 seconds (limit: ${maxWordsPer5s.toFixed(
-                  1
-                )})`
-              );
+              alertSound.play().catch(() => {});
+              alert(`🚨 Speech rate exceeded!\nSpoke ${recentCount} words in 5 seconds\nLimit: ${maxWordsPer5s.toFixed(1)} words`);
             }
           }
         }
       };
 
       recognition.onerror = (event) => {
-        console.error("Speech recognition error", event.error);
-        // Try restarting on some recoverable errors
+        console.error("Speech recognition error:", event.error);
         if (isListening && event.error !== "not-allowed") {
           restartRecognition();
         }
       };
 
       recognition.onend = () => {
-        // Automatically restart recognition if still listening
         if (isListening) {
           restartRecognition();
         } else {
           statusEl.textContent = "Stopped";
+          chunkingEl.textContent = "";
         }
       };
 
@@ -120,19 +109,33 @@
 
     function restartRecognition() {
       if (recognition) {
-        recognition.onresult = null;
-        recognition.onerror = null;
-        recognition.onend = null;
-        try {
-          recognition.stop();
-        } catch (e) {}
+        try { recognition.stop(); } catch (e) {}
         recognition = null;
       }
       setTimeout(() => {
-        if (isListening) {
-          startRecognition();
-        }
+        if (isListening) startRecognition();
       }, 200);
+    }
+
+    function startChunkingTimer() {
+      chunkingEl.textContent = "Listening…";
+
+      chunkTimer = setInterval(() => {
+        chunkingEl.textContent = "⏳ Chunking...";
+        setTimeout(() => {
+          chunkingEl.textContent = "Listening…";
+        }, 1000);
+
+        // Force recognition to finalize and restart
+        if (recognition) {
+          try { recognition.stop(); } catch (e) {}
+        }
+      }, 5000);
+    }
+
+    function stopChunkingTimer() {
+      clearInterval(chunkTimer);
+      chunkingEl.textContent = "";
     }
 
     function startListening() {
@@ -140,6 +143,7 @@
         alert("Speech recognition not supported in this browser.");
         return;
       }
+
       totalWords = 0;
       wordBuffer = [];
       startTime = Date.now();
@@ -149,22 +153,22 @@
       startBtn.disabled = true;
       stopBtn.disabled = false;
       startRecognition();
+      startChunkingTimer();
     }
 
     function stopListening() {
       isListening = false;
+      stopChunkingTimer();
+
       if (recognition) {
-        recognition.onresult = null;
-        recognition.onerror = null;
-        recognition.onend = null;
-        try {
-          recognition.stop();
-        } catch (e) {}
+        try { recognition.stop(); } catch (e) {}
         recognition = null;
       }
+
       startBtn.disabled = false;
       stopBtn.disabled = true;
       statusEl.textContent = "Stopped";
+      chunkingEl.textContent = "";
     }
 
     startBtn.onclick = startListening;
