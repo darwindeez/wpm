@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speech Word Monitor</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="apple-touch-icon" href="icon.png"> <!-- Optional -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+</head>
+<body>
+  <h1>Speech Word Monitor</h1>
+  <button onclick="startListening()">Start Listening</button>
+  <br><br>
+  <label for="wpmThreshold">Set WPM Threshold: </label>
+  <input type="number" id="wpmThreshold" value="120">
+  <p>Total Words: <span id="totalWords">0</span></p>
+  <p>Current WPM: <span id="currentWPM">0</span></p>
+  <p>Status: <span id="status">Idle</span></p>
+
+  <script>
+    let recognition;
+    let totalWords = 0;
+    let startTime;
+    let interval;
+    let wordBuffer = [];
+
+    function startListening() {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert("Speech recognition not supported on this browser.");
+        return;
+      }
+
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        document.getElementById("status").textContent = "Listening...";
+        startTime = Date.now();
+        wordBuffer = [];
+        interval = setInterval(calculateWPM, 5000);
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+      };
+
+      recognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            const transcript = event.results[i][0].transcript.trim();
+            const words = transcript.split(/\s+/);
+            totalWords += words.length;
+            wordBuffer.push({ time: Date.now(), count: words.length });
+            document.getElementById("totalWords").textContent = totalWords;
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        document.getElementById("status").textContent = "Stopped";
+        clearInterval(interval);
+      };
+
+      recognition.start();
+    }
+
+    function calculateWPM() {
+      const now = Date.now();
+      const oneMinuteAgo = now - 60000;
+
+      wordBuffer = wordBuffer.filter(entry => entry.time > oneMinuteAgo);
+
+      const recentWords = wordBuffer.reduce((sum, entry) => sum + entry.count, 0);
+      const currentWPM = Math.round(recentWords);
+
+      document.getElementById("currentWPM").textContent = currentWPM;
+
+      const threshold = parseInt(document.getElementById("wpmThreshold").value);
+      if (currentWPM > threshold) {
+        alert("WPM threshold exceeded! Current: " + currentWPM);
+      }
+    }
+  </script>
+</body>
+</html>
