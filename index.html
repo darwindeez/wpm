@@ -1,42 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Speech Word Monitor v1.3</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#ffffff">
-  <link rel="apple-touch-icon" href="icon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Speech Word Monitor v1.4</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    button { margin-right: 10px; }
-  </style>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js');
+    body {
+      font-family: sans-serif;
+      padding: 20px;
     }
-  </script>
+    button {
+      margin-right: 10px;
+    }
+  </style>
 </head>
 <body>
   <h1>Speech Word Monitor</h1>
-  <p><strong>Version:</strong> <span id="version">v1.3</span></p>
+  <p><strong>Version:</strong> <span id="version">v1.4</span></p>
 
-  <button onclick="startListening()">Start Listening</button>
-  <button onclick="stopListening()">Stop Listening</button>
-  <br><br>
+  <button id="startBtn">Start Listening</button>
+  <button id="stopBtn" disabled>Stop Listening</button>
+  <br /><br />
 
   <label for="wpmThreshold">Set WPM Threshold:</label>
-  <input type="number" id="wpmThreshold" value="120" min="1">
+  <input type="number" id="wpmThreshold" value="120" min="1" />
   
   <p>Total Words: <span id="totalWords">0</span></p>
   <p>Current Avg WPM: <span id="currentWPM">0</span></p>
   <p>Status: <span id="status">Idle</span></p>
 
   <!-- Sound Alert -->
-  <audio id="alertSound">
-    <source src="data:audio/mp3;base64,//uQxA..." type="audio/mp3">
-    Your browser does not support the audio element.
+  <audio id="alertSound" preload="auto">
+    <source src="data:audio/mp3;base64,//uQxA..." type="audio/mp3" />
+    <!-- You can replace the base64 with your own sound -->
   </audio>
 
   <script>
@@ -44,84 +40,135 @@
     let totalWords = 0;
     let wordBuffer = [];
     let startTime;
-    const ALERT_TIMEOUT = 5000;
+    let alertCooldown = 5000;
     let lastAlertTime = 0;
+    let restartInterval;
+    let isListening = false;
 
-    function startListening() {
-      if (!('webkitSpeechRecognition' in window)) {
-        alert("Speech recognition not supported on this browser.");
-        return;
-      }
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusEl = document.getElementById("status");
 
-      totalWords = 0;
-      wordBuffer = [];
-      startTime = Date.now();
-      lastAlertTime = 0;
-
-      document.getElementById("totalWords").textContent = totalWords;
-      document.getElementById("currentWPM").textContent = 0;
-      document.getElementById("status").textContent = "Listening...";
-
+    function startRecognition() {
       recognition = new webkitSpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = "en-US";
+      recognition.continuous = false; // run short segments
+      recognition.interimResults = false; // only final results
 
       recognition.onresult = (event) => {
         const now = Date.now();
-
         for (let i = event.resultIndex; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
             const transcript = event.results[i][0].transcript.trim();
             const words = transcript.split(/\s+/);
-            const wordCount = words.length;
-            totalWords += wordCount;
-            wordBuffer.push({ time: now, count: wordCount });
-
+            const count = words.length;
+            totalWords += count;
+            wordBuffer.push({ time: now, count });
             document.getElementById("totalWords").textContent = totalWords;
 
             // Clean buffer older than 60 seconds
-            wordBuffer = wordBuffer.filter(entry => now - entry.time <= 60000);
+            wordBuffer = wordBuffer.filter((entry) => now - entry.time <= 60000);
 
-            // Update avg WPM
+            // Calculate average WPM since start
             const elapsedMin = (now - startTime) / 60000;
             const avgWPM = Math.round(totalWords / elapsedMin);
             document.getElementById("currentWPM").textContent = avgWPM;
 
-            // Check for burst
-            const recent5s = wordBuffer.filter(entry => now - entry.time <= 5000);
-            const recentCount = recent5s.reduce((sum, entry) => sum + entry.count, 0);
+            // Check recent 5-second burst
+            const recent5s = wordBuffer.filter((e) => now - e.time <= 5000);
+            const recentCount = recent5s.reduce((sum, e) => sum + e.count, 0);
 
             const threshold = parseInt(document.getElementById("wpmThreshold").value);
             const maxWordsPer5s = threshold / 12;
 
-            if (recentCount > maxWordsPer5s && now - lastAlertTime > ALERT_TIMEOUT) {
+            if (
+              recentCount > maxWordsPer5s &&
+              now - lastAlertTime > alertCooldown
+            ) {
               lastAlertTime = now;
               document.getElementById("alertSound").play();
-              alert(`🚨 Speech rate exceeded!\nYou spoke ${recentCount} words in 5 seconds (limit: ${maxWordsPer5s.toFixed(1)})`);
+              alert(
+                `🚨 Speech rate exceeded!\nYou spoke ${recentCount} words in 5 seconds (limit: ${maxWordsPer5s.toFixed(
+                  1
+                )})`
+              );
             }
           }
         }
       };
 
       recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
+        console.error("Speech recognition error", event.error);
+        // Try restarting on some recoverable errors
+        if (isListening && event.error !== "not-allowed") {
+          restartRecognition();
+        }
       };
 
       recognition.onend = () => {
-        document.getElementById("status").textContent = "Stopped";
+        // Automatically restart recognition if still listening
+        if (isListening) {
+          restartRecognition();
+        } else {
+          statusEl.textContent = "Stopped";
+        }
       };
 
       recognition.start();
+      statusEl.textContent = "Listening...";
+    }
+
+    function restartRecognition() {
+      if (recognition) {
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        try {
+          recognition.stop();
+        } catch (e) {}
+        recognition = null;
+      }
+      setTimeout(() => {
+        if (isListening) {
+          startRecognition();
+        }
+      }, 200);
+    }
+
+    function startListening() {
+      if (!("webkitSpeechRecognition" in window)) {
+        alert("Speech recognition not supported in this browser.");
+        return;
+      }
+      totalWords = 0;
+      wordBuffer = [];
+      startTime = Date.now();
+      lastAlertTime = 0;
+      isListening = true;
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      startRecognition();
     }
 
     function stopListening() {
+      isListening = false;
       if (recognition) {
-        recognition.stop();
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        try {
+          recognition.stop();
+        } catch (e) {}
         recognition = null;
       }
-      document.getElementById("status").textContent = "Stopped";
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      statusEl.textContent = "Stopped";
     }
+
+    startBtn.onclick = startListening;
+    stopBtn.onclick = stopListening;
   </script>
 </body>
 </html>
