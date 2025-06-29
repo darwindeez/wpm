@@ -1,42 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Speech Rate Limiter v1.92</title>
+  <meta charset="UTF-8" />
+  <title>Speech Rate Limiter v1.93</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
       background-color: #f0f0f0;
       padding: 40px;
+      font-size: 18px;           /* bigger base font */
+      line-height: 1.6;
     }
+
     h1 {
       margin-bottom: 0;
+      font-size: 3rem;           /* larger heading */
     }
+
     #version {
-      font-size: 0.9em;
+      font-size: 1.2rem;
       color: #666;
+      margin-bottom: 20px;
     }
+
     button {
-      font-size: 1.2em;
-      padding: 10px 20px;
-      margin: 10px;
+      font-size: 1.8rem;         /* bigger buttons */
+      padding: 15px 30px;
+      margin: 15px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      transition: background-color 0.3s ease;
     }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
     input {
-      font-size: 1.2em;
-      width: 70px;
+      font-size: 1.6rem;         /* bigger input text */
+      width: 90px;
       text-align: center;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      margin-left: 10px;
     }
+
     #status {
       margin-top: 20px;
-      font-size: 1.1em;
+      font-size: 1.4rem;
       color: green;
+    }
+
+    div {
+      margin-top: 10px;
+      font-size: 1.4rem;
     }
   </style>
 </head>
 <body>
   <h1>Speech Rate Limiter</h1>
-  <div id="version">Version 1.92</div>
+  <div id="version">Version 1.93</div>
 
   <p>
     Max WPM: <input id="wpmLimit" type="number" value="120" />
