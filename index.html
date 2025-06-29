@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Speech Word Monitor v1.6</title>
+  <title>Speech Rate Limiter v1.7</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     button { margin-right: 10px; }
@@ -12,7 +12,7 @@
 </head>
 <body>
   <h1>Speech Word Monitor</h1>
-  <p><strong>Version:</strong> <span id="version">v1.6</span></p>
+  <p><strong>Version:</strong> <span id="version">v1.7</span></p>
 
   <button id="startBtn">Start Listening</button>
   <button id="stopBtn" disabled>Stop Listening</button>
@@ -25,7 +25,7 @@
   <p>Current Avg WPM: <span id="currentWPM">0</span></p>
   <p>Status: <span id="status">Idle</span> <span id="chunking" class="chunking"></span></p>
 
-  <!-- Working Beep Sound -->
+  <!-- Beep sound alert -->
   <audio id="alertSound" preload="auto">
     <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=" type="audio/wav" />
   </audio>
@@ -46,13 +46,13 @@
     const chunkingEl = document.getElementById("chunking");
     const alertSound = document.getElementById("alertSound");
 
-    function startRecognition() {
-      recognition = new webkitSpeechRecognition();
-      recognition.lang = "en-US";
-      recognition.continuous = false;
-      recognition.interimResults = false;
+    function setupRecognition() {
+      const recog = new webkitSpeechRecognition();
+      recog.lang = "en-US";
+      recog.continuous = false;
+      recog.interimResults = false;
 
-      recognition.onresult = (event) => {
+      recog.onresult = (event) => {
         const now = Date.now();
         for (let i = event.resultIndex; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
@@ -87,34 +87,36 @@
         }
       };
 
-      recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
+      recog.onerror = (event) => {
+        console.error("Recognition error:", event.error);
         if (isListening && event.error !== "not-allowed") {
           restartRecognition();
         }
       };
 
-      recognition.onend = () => {
+      recog.onend = () => {
         if (isListening) {
-          restartRecognition();
+          // If recognition ends unexpectedly, restart it
+          startRecognition();
         } else {
           statusEl.textContent = "Stopped";
           chunkingEl.textContent = "";
         }
       };
 
-      recognition.start();
-      statusEl.textContent = "Listening...";
+      return recog;
     }
 
-    function restartRecognition() {
+    function startRecognition() {
       if (recognition) {
+        recognition.onresult = null;
+        recognition.onend = null;
+        recognition.onerror = null;
         try { recognition.stop(); } catch (e) {}
-        recognition = null;
       }
-      setTimeout(() => {
-        if (isListening) startRecognition();
-      }, 200);
+      recognition = setupRecognition();
+      recognition.start();
+      statusEl.textContent = "Listening...";
     }
 
     function startChunkingTimer() {
@@ -126,10 +128,19 @@
           chunkingEl.textContent = "Listening…";
         }, 1000);
 
-        // Force recognition to finalize and restart
         if (recognition) {
-          try { recognition.stop(); } catch (e) {}
+          try {
+            recognition.onend = null; // prevent double restart
+            recognition.stop();
+          } catch (e) {}
         }
+
+        // Force restart recognition directly
+        setTimeout(() => {
+          if (isListening) {
+            startRecognition();
+          }
+        }, 300); // short pause between stop/start
       }, 5000);
     }
 
@@ -152,6 +163,7 @@
 
       startBtn.disabled = true;
       stopBtn.disabled = false;
+
       startRecognition();
       startChunkingTimer();
     }
