@@ -3,16 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Speech Rate Limiter v1.7</title>
+  <title>Speech Rate Limiter</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     button { margin-right: 10px; }
-    .chunking { color: orange; font-style: italic; }
   </style>
 </head>
 <body>
   <h1>Speech Rate Limiter</h1>
-  <p><strong>Version:</strong> <span id="version">v1.7</span></p>
+  <p><strong>Version:</strong> <span id="version">v1.4</span></p>
 
   <button id="startBtn">Start Listening</button>
   <button id="stopBtn" disabled>Stop Listening</button>
@@ -23,9 +22,9 @@
   
   <p>Total Words: <span id="totalWords">0</span></p>
   <p>Current Avg WPM: <span id="currentWPM">0</span></p>
-  <p>Status: <span id="status">Idle</span> <span id="chunking" class="chunking"></span></p>
+  <p>Status: <span id="status">Idle</span></p>
 
-  <!-- Beep sound alert -->
+  <!-- Simple Beep -->
   <audio id="alertSound" preload="auto">
     <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=" type="audio/wav" />
   </audio>
@@ -38,21 +37,19 @@
     let alertCooldown = 5000;
     let lastAlertTime = 0;
     let isListening = false;
-    let chunkTimer;
 
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const statusEl = document.getElementById("status");
-    const chunkingEl = document.getElementById("chunking");
     const alertSound = document.getElementById("alertSound");
 
-    function setupRecognition() {
-      const recog = new webkitSpeechRecognition();
-      recog.lang = "en-US";
-      recog.continuous = false;
-      recog.interimResults = false;
+    function startRecognition() {
+      recognition = new webkitSpeechRecognition();
+      recognition.lang = "en-US";
+      recognition.continuous = false;
+      recognition.interimResults = false;
 
-      recog.onresult = (event) => {
+      recognition.onresult = (event) => {
         const now = Date.now();
         for (let i = event.resultIndex; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
@@ -87,66 +84,33 @@
         }
       };
 
-      recog.onerror = (event) => {
-        console.error("Recognition error:", event.error);
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
         if (isListening && event.error !== "not-allowed") {
           restartRecognition();
         }
       };
 
-      recog.onend = () => {
+      recognition.onend = () => {
         if (isListening) {
-          // If recognition ends unexpectedly, restart it
-          startRecognition();
+          restartRecognition();
         } else {
           statusEl.textContent = "Stopped";
-          chunkingEl.textContent = "";
         }
       };
 
-      return recog;
-    }
-
-    function startRecognition() {
-      if (recognition) {
-        recognition.onresult = null;
-        recognition.onend = null;
-        recognition.onerror = null;
-        try { recognition.stop(); } catch (e) {}
-      }
-      recognition = setupRecognition();
       recognition.start();
       statusEl.textContent = "Listening...";
     }
 
-    function startChunkingTimer() {
-      chunkingEl.textContent = "Listening…";
-
-      chunkTimer = setInterval(() => {
-        chunkingEl.textContent = "⏳ Chunking...";
-        setTimeout(() => {
-          chunkingEl.textContent = "Listening…";
-        }, 1000);
-
-        if (recognition) {
-          try {
-            recognition.onend = null; // prevent double restart
-            recognition.stop();
-          } catch (e) {}
-        }
-
-        // Force restart recognition directly
-        setTimeout(() => {
-          if (isListening) {
-            startRecognition();
-          }
-        }, 300); // short pause between stop/start
-      }, 5000);
-    }
-
-    function stopChunkingTimer() {
-      clearInterval(chunkTimer);
-      chunkingEl.textContent = "";
+    function restartRecognition() {
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+      setTimeout(() => {
+        if (isListening) startRecognition();
+      }, 200);
     }
 
     function startListening() {
@@ -163,15 +127,11 @@
 
       startBtn.disabled = true;
       stopBtn.disabled = false;
-
       startRecognition();
-      startChunkingTimer();
     }
 
     function stopListening() {
       isListening = false;
-      stopChunkingTimer();
-
       if (recognition) {
         try { recognition.stop(); } catch (e) {}
         recognition = null;
@@ -180,7 +140,6 @@
       startBtn.disabled = false;
       stopBtn.disabled = true;
       statusEl.textContent = "Stopped";
-      chunkingEl.textContent = "";
     }
 
     startBtn.onclick = startListening;
